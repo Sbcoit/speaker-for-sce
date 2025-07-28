@@ -1,4 +1,5 @@
-import pygame
+import pygame, pygame.scrap
+import pyperclip
 import os
 import subprocess
 import sys
@@ -11,6 +12,7 @@ class MusicPlayer:
         # Initialize pygame
         pygame.init()
         pygame.mixer.init()
+        pygame.scrap.init()
         
         # Display settings
         self.WIDTH = 800
@@ -163,12 +165,31 @@ class MusicPlayer:
     
     def draw_input_box(self, x: int, y: int, width: int, height: int):
         """Draw an input box and handle input"""
+        font = pygame.font.Font(None, 28)
         color = self.BLUE if self.input_active else self.GRAY
+
+        # Draw box
         pygame.draw.rect(self.screen, color, (x, y, width, height), 2)
-        
-        # Draw text
-        text_surface = self.font.render(self.input_box, True, self.WHITE)
+
+        # Set max text width inside box (subtract padding)
+        max_width = width - 10
+
+        # Default to full text
+        visible_text = self.input_box
+
+        # Clip left if text too wide
+        text_surface = font.render(visible_text, True, self.WHITE)
+        if text_surface.get_width() > max_width:
+            for i in range(len(visible_text)):
+                clipped = visible_text[i:]
+                if font.render(clipped, True, self.WHITE).get_width() <= max_width:
+                    visible_text = clipped
+                    break
+
+        # Render only visible part
+        text_surface = font.render(visible_text, True, self.WHITE)
         self.screen.blit(text_surface, (x + 5, y + 5))
+
     
     def draw_volume_slider(self, x: int, y: int, width: int, height: int):
         """Draw volume slider"""
@@ -215,7 +236,7 @@ class MusicPlayer:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
-            
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     # Check input box click
@@ -223,29 +244,46 @@ class MusicPlayer:
                         self.input_active = True
                     else:
                         self.input_active = False
-                    
+
                     # Check volume slider
                     if 50 <= event.pos[0] <= 350 and 120 <= event.pos[1] <= 140:
                         volume_x = event.pos[0] - 50
                         self.set_volume(volume_x / 300)
-            
+
             elif event.type == pygame.KEYDOWN:
                 if self.input_active:
-                    if event.key == pygame.K_RETURN:
+                    if event.key == pygame.K_ESCAPE:
+                        self.input_box = ""
+
+                    # Paste with Command+V (macOS) or Ctrl+V (Windows/Linux)
+                    elif (event.key == pygame.K_v and 
+                        ((pygame.key.get_mods() & pygame.KMOD_CTRL) or
+                        (pygame.key.get_mods() & pygame.KMOD_META))):  # Meta = ⌘ on macOS
+                        try:
+                            import pyperclip
+                            clipboard = pyperclip.paste()
+                            if clipboard:
+                                self.input_box += clipboard
+                        except Exception as e:
+                            print(f"Clipboard error: {e}")
+
+                    elif event.key == pygame.K_RETURN:
                         # Download from YouTube
                         if self.input_box.strip():
                             success = self.download_from_youtube(self.input_box)
                             if success:
                                 self.input_box = ""
+
                     elif event.key == pygame.K_BACKSPACE:
                         self.input_box = self.input_box[:-1]
+
                     else:
                         self.input_box += event.unicode
-            
+
             elif event.type == pygame.MOUSEWHEEL:
                 # Scroll track list
                 self.scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - event.y))
-        
+
         return True
     
     def draw(self):
