@@ -5,7 +5,9 @@ import subprocess
 import sys
 import threading
 import time
-from typing import List, Optional
+import json
+from typing import List, Optional, Dict
+from collections import deque
 
 class MusicPlayer:
     def __init__(self):
@@ -15,10 +17,10 @@ class MusicPlayer:
         pygame.scrap.init()
         
         # Display settings
-        self.WIDTH = 800
-        self.HEIGHT = 600
+        self.WIDTH = 1000
+        self.HEIGHT = 700
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
-        pygame.display.set_caption("Music Player")
+        pygame.display.set_caption("Advanced Music Player")
         
         # Colors
         self.BLACK = (0, 0, 0)
@@ -28,10 +30,13 @@ class MusicPlayer:
         self.BLUE = (0, 100, 255)
         self.RED = (255, 0, 0)
         self.GREEN = (0, 255, 0)
+        self.YELLOW = (255, 255, 0)
+        self.PURPLE = (128, 0, 128)
         
         # Font
         self.font = pygame.font.Font(None, 32)
         self.small_font = pygame.font.Font(None, 24)
+        self.tiny_font = pygame.font.Font(None, 18)
         
         # Music settings
         self.music_folder = "music_files"
@@ -42,23 +47,120 @@ class MusicPlayer:
         self.volume = 0.7
         self.current_track = ""
         
+        # Queue system
+        self.queue = deque()
+        self.queue_index = 0
+        self.repeat_mode = "none"  # none, one, all
+        
+        # Search functionality
+        self.search_query = ""
+        self.search_results = []
+        self.search_active = False
+        self.show_search_results = False
+        
+        # Bluetooth devices
+        self.bluetooth_devices = []
+        self.connected_device = None
+        self.bluetooth_active = False
+        
         # UI elements
         self.buttons = {}
         self.input_box = ""
         self.input_active = False
         self.scroll_offset = 0
         self.max_scroll = 0
+        self.queue_scroll = 0
+        self.search_scroll = 0
         
         # Load music files
         self.refresh_music_files()
         
         # Set initial volume
         pygame.mixer.music.set_volume(self.volume)
+        
+        # Initialize Bluetooth (simulated for now)
+        self.init_bluetooth()
+    
+    def init_bluetooth(self):
+        """Initialize Bluetooth functionality"""
+        # Simulated Bluetooth devices for demo
+        self.bluetooth_devices = [
+            {"name": "JBL Flip 5", "address": "00:11:22:33:44:55", "connected": False},
+            {"name": "Sony WH-1000XM4", "address": "AA:BB:CC:DD:EE:FF", "connected": False},
+            {"name": "AirPods Pro", "address": "11:22:33:44:55:66", "connected": False},
+            {"name": "Bose QuietComfort", "address": "22:33:44:55:66:77", "connected": False}
+        ]
     
     def refresh_music_files(self):
         """Refresh the list of music files"""
         self.music_files = sorted([f for f in os.listdir(self.music_folder) if f.endswith(".mp3")])
         self.max_scroll = max(0, len(self.music_files) - 10)  # Show 10 tracks at a time
+    
+    def search_music(self, query: str):
+        """Search through music files"""
+        if not query.strip():
+            self.search_results = []
+            return
+        
+        query = query.lower()
+        self.search_results = [
+            track for track in self.music_files 
+            if query in track.lower()
+        ]
+    
+    def add_to_queue(self, track_name: str):
+        """Add a track to the queue"""
+        if track_name in self.music_files and track_name not in self.queue:
+            self.queue.append(track_name)
+    
+    def remove_from_queue(self, index: int):
+        """Remove a track from the queue"""
+        if 0 <= index < len(self.queue):
+            self.queue.remove(self.queue[index])
+    
+    def clear_queue(self):
+        """Clear the entire queue"""
+        self.queue.clear()
+        self.queue_index = 0
+    
+    def play_from_queue(self):
+        """Play the next track in queue"""
+        if self.queue:
+            track_name = self.queue[self.queue_index]
+            file_path = os.path.join(self.music_folder, track_name)
+            if self.play_music(file_path):
+                self.current_track = track_name
+                return True
+        return False
+    
+    def next_in_queue(self):
+        """Move to next track in queue"""
+        if self.queue:
+            self.queue_index = (self.queue_index + 1) % len(self.queue)
+            self.play_from_queue()
+    
+    def previous_in_queue(self):
+        """Move to previous track in queue"""
+        if self.queue:
+            self.queue_index = (self.queue_index - 1) % len(self.queue)
+            self.play_from_queue()
+    
+    def connect_bluetooth_device(self, device_index: int):
+        """Connect to a Bluetooth device"""
+        if 0 <= device_index < len(self.bluetooth_devices):
+            # Disconnect all devices first
+            for device in self.bluetooth_devices:
+                device["connected"] = False
+            
+            # Connect to selected device
+            self.bluetooth_devices[device_index]["connected"] = True
+            self.connected_device = self.bluetooth_devices[device_index]
+    
+    def disconnect_bluetooth(self):
+        """Disconnect from Bluetooth device"""
+        if self.connected_device:
+            self.connected_device["connected"] = False
+            self.connected_device = None
     
     def play_music(self, file_path: str) -> bool:
         """Play music using pygame"""
@@ -99,7 +201,9 @@ class MusicPlayer:
     
     def skip_track(self):
         """Skip to next track"""
-        if self.music_files:
+        if self.queue:
+            self.next_in_queue()
+        elif self.music_files:
             self.stop_music()
             self.current_index = (self.current_index + 1) % len(self.music_files)
             file_path = os.path.join(self.music_folder, self.music_files[self.current_index])
@@ -107,7 +211,9 @@ class MusicPlayer:
     
     def previous_track(self):
         """Go to previous track"""
-        if self.music_files:
+        if self.queue:
+            self.previous_in_queue()
+        elif self.music_files:
             self.stop_music()
             self.current_index = (self.current_index - 1) % len(self.music_files)
             file_path = os.path.join(self.music_folder, self.music_files[self.current_index])
@@ -117,6 +223,12 @@ class MusicPlayer:
         """Set music volume"""
         self.volume = max(0.0, min(1.0, volume))
         pygame.mixer.music.set_volume(self.volume)
+    
+    def toggle_repeat_mode(self):
+        """Toggle between repeat modes: none -> one -> all -> none"""
+        modes = ["none", "one", "all"]
+        current_index = modes.index(self.repeat_mode)
+        self.repeat_mode = modes[(current_index + 1) % len(modes)]
     
     def download_from_youtube(self, url: str):
         """Download music from YouTube URL"""
@@ -163,10 +275,30 @@ class MusicPlayer:
         
         return clicked
     
-    def draw_input_box(self, x: int, y: int, width: int, height: int):
+    def draw_small_button(self, text: str, x: int, y: int, width: int, height: int, color: tuple, hover_color: tuple):
+        """Draw a small button and return if it's clicked"""
+        mouse_pos = pygame.mouse.get_pos()
+        clicked = False
+        
+        # Check if mouse is over button
+        if x <= mouse_pos[0] <= x + width and y <= mouse_pos[1] <= y + height:
+            pygame.draw.rect(self.screen, hover_color, (x, y, width, height))
+            if pygame.mouse.get_pressed()[0]:  # Left click
+                clicked = True
+        else:
+            pygame.draw.rect(self.screen, color, (x, y, width, height))
+        
+        # Draw text
+        text_surface = self.small_font.render(text, True, self.WHITE)
+        text_rect = text_surface.get_rect(center=(x + width // 2, y + height // 2))
+        self.screen.blit(text_surface, text_rect)
+        
+        return clicked
+    
+    def draw_input_box(self, x: int, y: int, width: int, height: int, text: str, active: bool):
         """Draw an input box and handle input"""
         font = pygame.font.Font(None, 28)
-        color = self.BLUE if self.input_active else self.GRAY
+        color = self.BLUE if active else self.GRAY
 
         # Draw box
         pygame.draw.rect(self.screen, color, (x, y, width, height), 2)
@@ -175,7 +307,7 @@ class MusicPlayer:
         max_width = width - 10
 
         # Default to full text
-        visible_text = self.input_box
+        visible_text = text
 
         # Clip left if text too wide
         text_surface = font.render(visible_text, True, self.WHITE)
@@ -189,7 +321,6 @@ class MusicPlayer:
         # Render only visible part
         text_surface = font.render(visible_text, True, self.WHITE)
         self.screen.blit(text_surface, (x + 5, y + 5))
-
     
     def draw_volume_slider(self, x: int, y: int, width: int, height: int):
         """Draw volume slider"""
@@ -204,20 +335,20 @@ class MusicPlayer:
         volume_text = self.small_font.render(f"Volume: {int(self.volume * 100)}%", True, self.WHITE)
         self.screen.blit(volume_text, (x, y - 25))
     
-    def draw_track_list(self, x: int, y: int, width: int, height: int):
-        """Draw the track list"""
+    def draw_track_list(self, x: int, y: int, width: int, height: int, tracks: List[str], current_track: str, scroll_offset: int):
+        """Draw a track list"""
         # Background
         pygame.draw.rect(self.screen, self.DARK_GRAY, (x, y, width, height))
         
         # Draw tracks
-        visible_tracks = self.music_files[self.scroll_offset:self.scroll_offset + 10]
+        visible_tracks = tracks[scroll_offset:scroll_offset + 10]
         for i, track in enumerate(visible_tracks):
             track_y = y + i * 30
             if track_y + 30 > y + height:
                 break
             
             # Highlight current track
-            if track == self.current_track:
+            if track == current_track:
                 pygame.draw.rect(self.screen, self.BLUE, (x, track_y, width, 30))
             
             # Truncate track name if too long
@@ -231,6 +362,40 @@ class MusicPlayer:
             track_text = self.small_font.render(display_text, True, self.WHITE)
             self.screen.blit(track_text, (x + 5, track_y + 5))
     
+    def draw_bluetooth_devices(self, x: int, y: int, width: int, height: int):
+        """Draw Bluetooth devices list"""
+        # Background
+        pygame.draw.rect(self.screen, self.DARK_GRAY, (x, y, width, height))
+        
+        # Title
+        title = self.small_font.render("Bluetooth Devices:", True, self.WHITE)
+        self.screen.blit(title, (x + 5, y + 5))
+        
+        # Draw devices
+        for i, device in enumerate(self.bluetooth_devices):
+            device_y = y + 30 + i * 25
+            if device_y + 25 > y + height:
+                break
+            
+            # Device status color
+            color = self.GREEN if device["connected"] else self.WHITE
+            
+            # Device name
+            name_text = self.small_font.render(device["name"], True, color)
+            self.screen.blit(name_text, (x + 5, device_y))
+            
+            # Connect/Disconnect button
+            btn_text = "Disconnect" if device["connected"] else "Connect"
+            btn_color = self.RED if device["connected"] else self.GREEN
+            btn_hover = (200, 0, 0) if device["connected"] else (0, 200, 0)
+            
+            btn_clicked = self.draw_small_button(btn_text, x + width - 80, device_y, 75, 20, btn_color, btn_hover)
+            if btn_clicked:
+                if device["connected"]:
+                    self.disconnect_bluetooth()
+                else:
+                    self.connect_bluetooth_device(i)
+    
     def handle_events(self):
         """Handle pygame events"""
         for event in pygame.event.get():
@@ -239,50 +404,71 @@ class MusicPlayer:
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
-                    # Check input box click
+                    # Check input boxes
                     if 50 <= event.pos[0] <= 550 and 50 <= event.pos[1] <= 80:
                         self.input_active = True
-                    else:
+                        self.search_active = False
+                    elif 50 <= event.pos[0] <= 350 and 120 <= event.pos[1] <= 140:
                         self.input_active = False
-
-                    # Check volume slider
-                    if 50 <= event.pos[0] <= 350 and 120 <= event.pos[1] <= 140:
+                        self.search_active = False
                         volume_x = event.pos[0] - 50
                         self.set_volume(volume_x / 300)
+                    elif 50 <= event.pos[0] <= 350 and 200 <= event.pos[1] <= 220:
+                        self.input_active = False
+                        self.search_active = True
+                    else:
+                        self.input_active = False
+                        self.search_active = False
 
             elif event.type == pygame.KEYDOWN:
                 if self.input_active:
                     if event.key == pygame.K_ESCAPE:
                         self.input_box = ""
-
-                    # Paste with Command+V (macOS) or Ctrl+V (Windows/Linux)
-                    elif (event.key == pygame.K_v and 
-                        ((pygame.key.get_mods() & pygame.KMOD_CTRL) or
-                        (pygame.key.get_mods() & pygame.KMOD_META))):  # Meta = ⌘ on macOS
-                        try:
-                            import pyperclip
-                            clipboard = pyperclip.paste()
-                            if clipboard:
-                                self.input_box += clipboard
-                        except Exception as e:
-                            print(f"Clipboard error: {e}")
-
                     elif event.key == pygame.K_RETURN:
-                        # Download from YouTube
                         if self.input_box.strip():
                             success = self.download_from_youtube(self.input_box)
                             if success:
                                 self.input_box = ""
-
                     elif event.key == pygame.K_BACKSPACE:
                         self.input_box = self.input_box[:-1]
-
                     else:
                         self.input_box += event.unicode
+                
+                elif self.search_active:
+                    if event.key == pygame.K_ESCAPE:
+                        self.search_query = ""
+                        self.show_search_results = False
+                    elif event.key == pygame.K_RETURN:
+                        if self.search_query.strip():
+                            self.search_music(self.search_query)
+                            self.show_search_results = True
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.search_query = self.search_query[:-1]
+                    else:
+                        self.search_query += event.unicode
+
+                # Paste with Command+V (macOS) or Ctrl+V (Windows/Linux)
+                if (event.key == pygame.K_v and 
+                    ((pygame.key.get_mods() & pygame.KMOD_CTRL) or
+                    (pygame.key.get_mods() & pygame.KMOD_META))):
+                    try:
+                        clipboard = pyperclip.paste()
+                        if clipboard:
+                            if self.input_active:
+                                self.input_box += clipboard
+                            elif self.search_active:
+                                self.search_query += clipboard
+                    except Exception as e:
+                        print(f"Clipboard error: {e}")
 
             elif event.type == pygame.MOUSEWHEEL:
-                # Scroll track list
-                self.scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - event.y))
+                # Scroll track lists
+                if 50 <= pygame.mouse.get_pos()[0] <= 450:  # Music library area
+                    self.scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - event.y))
+                elif 470 <= pygame.mouse.get_pos()[0] <= 870:  # Queue area
+                    self.queue_scroll = max(0, min(len(self.queue) - 10, self.queue_scroll - event.y))
+                elif 50 <= pygame.mouse.get_pos()[0] <= 450 and 400 <= pygame.mouse.get_pos()[1] <= 600:  # Search results
+                    self.search_scroll = max(0, min(len(self.search_results) - 10, self.search_scroll - event.y))
 
         return True
     
@@ -291,14 +477,14 @@ class MusicPlayer:
         self.screen.fill(self.BLACK)
         
         # Title
-        title = self.font.render("Music Player", True, self.WHITE)
+        title = self.font.render("Advanced Music Player", True, self.WHITE)
         self.screen.blit(title, (self.WIDTH // 2 - title.get_width() // 2, 10))
         
         # YouTube download section
         download_label = self.small_font.render("YouTube URL:", True, self.WHITE)
         self.screen.blit(download_label, (50, 30))
         
-        self.draw_input_box(50, 50, 500, 30)
+        self.draw_input_box(50, 50, 500, 30, self.input_box, self.input_active)
         
         download_btn = self.draw_button("Download", 570, 50, 100, 30, self.RED, (200, 0, 0))
         if download_btn:
@@ -307,54 +493,110 @@ class MusicPlayer:
                 if success:
                     self.input_box = ""
         
+        # Search section
+        search_label = self.small_font.render("Search:", True, self.WHITE)
+        self.screen.blit(search_label, (50, 100))
+        
+        self.draw_input_box(50, 120, 300, 30, self.search_query, self.search_active)
+        
+        search_btn = self.draw_button("Search", 370, 120, 80, 30, self.PURPLE, (100, 0, 100))
+        if search_btn:
+            if self.search_query.strip():
+                self.search_music(self.search_query)
+                self.show_search_results = True
+        
         # Volume control
-        self.draw_volume_slider(50, 120, 300, 20)
+        self.draw_volume_slider(50, 170, 300, 20)
         
         # Current track info
         if self.current_track:
             track_text = self.small_font.render(f"Now Playing: {self.current_track}", True, self.WHITE)
-            self.screen.blit(track_text, (50, 160))
+            self.screen.blit(track_text, (50, 210))
+        
+        # Repeat mode
+        repeat_text = self.small_font.render(f"Repeat: {self.repeat_mode.title()}", True, self.YELLOW)
+        self.screen.blit(repeat_text, (400, 210))
         
         # Control buttons
-        play_btn = self.draw_button("Play" if not self.is_playing else "Pause", 50, 200, 80, 40, self.GREEN, (0, 200, 0))
+        play_btn = self.draw_button("Play" if not self.is_playing else "Pause", 50, 250, 80, 40, self.GREEN, (0, 200, 0))
         if play_btn:
             if self.is_playing:
                 self.pause_music()
             else:
-                if self.music_files:
+                if self.queue:
+                    self.play_from_queue()
+                elif self.music_files:
                     file_path = os.path.join(self.music_folder, self.music_files[self.current_index])
                     self.play_music(file_path)
         
-        stop_btn = self.draw_button("Stop", 140, 200, 80, 40, self.RED, (200, 0, 0))
+        stop_btn = self.draw_button("Stop", 140, 250, 80, 40, self.RED, (200, 0, 0))
         if stop_btn:
             self.stop_music()
         
-        prev_btn = self.draw_button("⏮", 230, 200, 60, 40, self.BLUE, (0, 150, 255))
+        prev_btn = self.draw_button("⏮", 230, 250, 60, 40, self.BLUE, (0, 150, 255))
         if prev_btn:
             self.previous_track()
         
-        next_btn = self.draw_button("⏭", 300, 200, 60, 40, self.BLUE, (0, 150, 255))
+        next_btn = self.draw_button("⏭", 300, 250, 60, 40, self.BLUE, (0, 150, 255))
         if next_btn:
             self.skip_track()
         
-        # Track list
-        list_label = self.small_font.render("Music Library:", True, self.WHITE)
-        self.screen.blit(list_label, (50, 260))
+        repeat_btn = self.draw_button("🔁", 370, 250, 60, 40, self.YELLOW, (200, 200, 0))
+        if repeat_btn:
+            self.toggle_repeat_mode()
         
-        self.draw_track_list(50, 280, 400, 300)
+        # Queue management
+        queue_btn = self.draw_button("Add to Queue", 450, 250, 120, 40, self.PURPLE, (100, 0, 100))
+        if queue_btn and self.current_track:
+            self.add_to_queue(self.current_track)
+        
+        clear_queue_btn = self.draw_button("Clear Queue", 580, 250, 100, 40, self.RED, (200, 0, 0))
+        if clear_queue_btn:
+            self.clear_queue()
+        
+        # Music Library
+        if not self.show_search_results:
+            list_label = self.small_font.render("Music Library:", True, self.WHITE)
+            self.screen.blit(list_label, (50, 310))
+            
+            self.draw_track_list(50, 330, 400, 200, self.music_files, self.current_track, self.scroll_offset)
+        else:
+            # Search Results
+            list_label = self.small_font.render(f"Search Results ({len(self.search_results)}):", True, self.WHITE)
+            self.screen.blit(list_label, (50, 310))
+            
+            self.draw_track_list(50, 330, 400, 200, self.search_results, self.current_track, self.search_scroll)
+        
+        # Queue
+        queue_label = self.small_font.render(f"Queue ({len(self.queue)} tracks):", True, self.WHITE)
+        self.screen.blit(queue_label, (470, 310))
+        
+        self.draw_track_list(470, 330, 400, 200, list(self.queue), self.current_track, self.queue_scroll)
+        
+        # Bluetooth devices
+        bluetooth_label = self.small_font.render("Bluetooth Devices:", True, self.WHITE)
+        self.screen.blit(bluetooth_label, (50, 550))
+        
+        self.draw_bluetooth_devices(50, 570, 400, 100)
+        
+        # Connected device info
+        if self.connected_device:
+            connected_text = self.small_font.render(f"Connected: {self.connected_device['name']}", True, self.GREEN)
+            self.screen.blit(connected_text, (470, 570))
         
         # Instructions
         instructions = [
             "Controls:",
-            "• Click 'Download' to download from YouTube",
-            "• Use Play/Pause/Stop buttons",
-            "• Scroll mouse wheel to navigate tracks",
-            "• Click volume slider to adjust volume"
+            "• Download from YouTube URLs",
+            "• Search music library",
+            "• Add tracks to queue",
+            "• Connect Bluetooth devices",
+            "• Use mouse wheel to scroll lists"
         ]
         
         for i, instruction in enumerate(instructions):
-            inst_text = self.small_font.render(instruction, True, self.GRAY)
-            self.screen.blit(inst_text, (470, 280 + i * 20))
+            inst_text = self.tiny_font.render(instruction, True, self.GRAY)
+            self.screen.blit(inst_text, (470, 600 + i * 15))
         
         pygame.display.flip()
     

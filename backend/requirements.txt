@@ -2,3 +2,5 @@ pygame==2.6.1
 fastapi==0.95.2  
 uvicorn==0.22.0
 pyperclip==1.9.0
+pydub==0.25.1
+mutagen==1.47.0
