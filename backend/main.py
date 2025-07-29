@@ -683,7 +683,6 @@ class MusicPlayer:
             connected_text = self.small_font.render(f"Connected: {self.connected_device['name']}", True, self.GREEN)
             self.screen.blit(connected_text, (470, bottom_y))
         
-        # Instructions (right side)
         instructions = [
             "Controls:",
             "• Download from YouTube URLs",

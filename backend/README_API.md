@@ -17,9 +17,7 @@ Open your browser and go to: `http://localhost:8000/docs`
 This provides an interactive Swagger UI where you can test all endpoints.
 
 ### 3. Test the API
-```bash
-python test_api.py
-```
+You can test the API using curl commands or the interactive Swagger UI at `http://localhost:8000/docs`
 
 ## 📋 Required Endpoints (GitHub Issue #3)
 
