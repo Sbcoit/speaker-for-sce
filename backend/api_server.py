@@ -9,24 +9,20 @@ import os
 import sys
 import asyncio
 
-# Import the MusicPlayer class
 from main import MusicPlayer
 
 app = FastAPI(title="Music Player API", description="Remote control API for Pygame Music Player")
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global music player instance
 music_player = None
 
-# Pydantic models for request/response
 class YouTubeURL(BaseModel):
     url: str
 
@@ -34,7 +30,7 @@ class SearchQuery(BaseModel):
     query: str
 
 class VolumeRequest(BaseModel):
-    volume: int  # 0-100 as per requirements
+    volume: int  
 
 class QueueTrack(BaseModel):
     track_name: str
@@ -43,7 +39,7 @@ class BluetoothDevice(BaseModel):
     device_index: int
 
 class ControlRequest(BaseModel):
-    action: str  # play, pause, stop, next, previous, repeat
+    action: str
 
 class Response(BaseModel):
     success: bool
@@ -51,10 +47,8 @@ class Response(BaseModel):
     data: Optional[Dict] = None
 
 def init_music_player():
-    """Initialize the music player in headless mode"""
     global music_player
     try:
-        # Initialize in headless mode to avoid GUI issues
         music_player = MusicPlayer(headless=True)
         print("✅ Music player initialized in headless mode")
     except Exception as e:
@@ -63,14 +57,11 @@ def init_music_player():
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the music player when the API server starts"""
     print("🚀 Starting Music Player API...")
-    # Initialize music player on startup
     init_music_player()
 
 @app.get("/", response_model=Response)
 async def root():
-    """Root endpoint"""
     return Response(
         success=True,
         message="Music Player API is running",
@@ -79,7 +70,6 @@ async def root():
 
 @app.get("/status", response_model=Response)
 async def get_status():
-    """Get current player status"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -89,18 +79,15 @@ async def get_status():
         data={
             "is_playing": music_player.is_playing,
             "current_track": music_player.current_track,
-            "volume": int(music_player.volume * 100),  # Convert to 0-100 scale
+            "volume": int(music_player.volume * 100),
             "queue_length": len(music_player.queue),
             "repeat_mode": music_player.repeat_mode,
             "connected_device": music_player.connected_device["name"] if music_player.connected_device else None
         }
     )
 
-# Required endpoints from GitHub issue
-
 @app.post("/resume", response_model=Response)
 async def resume_playback():
-    """Resume playback if paused"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -115,7 +102,6 @@ async def resume_playback():
 
 @app.post("/pause", response_model=Response)
 async def pause_playback():
-    """Pause playback if playing"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -130,7 +116,6 @@ async def pause_playback():
 
 @app.post("/skip", response_model=Response)
 async def skip_track():
-    """Move to next song in queue"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -142,7 +127,6 @@ async def skip_track():
 
 @app.post("/previous", response_model=Response)
 async def previous_track():
-    """Move to previous song"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -154,7 +138,6 @@ async def previous_track():
 
 @app.post("/stop", response_model=Response)
 async def stop_playback():
-    """Stop playback and clear queue"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -167,24 +150,21 @@ async def stop_playback():
 
 @app.get("/current", response_model=Response)
 async def get_current_song():
-    """Get current song info with title, progress, duration, state"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
     try:
-        # Get current playback position (approximate)
         current_pos = 0
         if music_player.is_playing and music_player.current_track:
-            # This is a simplified approach - in a real implementation you'd get actual position
-            current_pos = 0  # pygame.mixer.music.get_pos() would give actual position
+            current_pos = 0 
         
         return Response(
             success=True,
             message="Current song info retrieved",
             data={
                 "title": music_player.current_track,
-                "progress": current_pos,  # in seconds
-                "duration": 0,  # Would need to be calculated from file
+                "progress": current_pos,  
+                "duration": 0,  
                 "state": "playing" if music_player.is_playing else "paused",
                 "volume": int(music_player.volume * 100)
             }
@@ -194,12 +174,10 @@ async def get_current_song():
 
 @app.post("/volume", response_model=Response)
 async def set_volume(request: VolumeRequest):
-    """Set player volume (0-100)"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
     try:
-        # Convert 0-100 to 0.0-1.0
         volume_float = max(0, min(100, request.volume)) / 100.0
         music_player.set_volume(volume_float)
         return Response(
@@ -212,13 +190,11 @@ async def set_volume(request: VolumeRequest):
 
 @app.get("/search", response_model=Response)
 async def search_tracks(query: str = Query(..., alias="q")):
-    """Search for tracks - returns top 5 results"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
     try:
         music_player.search_music(query)
-        # Return top 5 results as per requirements
         top_results = music_player.search_results[:5]
         return Response(
             success=True,
@@ -256,12 +232,12 @@ async def add_to_queue(request: QueueTrack):
             else:
                 return Response(success=False, message="Failed to download from URL")
         else:
-            # Check if it's a search query
+            # Checks if search query
             if track_name not in music_player.music_files:
-                # Search for the track
+                # Search for track
                 music_player.search_music(track_name)
                 if music_player.search_results:
-                    # Add the top result
+                    # Add top result
                     top_result = music_player.search_results[0]
                     music_player.add_to_queue(top_result)
                     return Response(
@@ -272,7 +248,6 @@ async def add_to_queue(request: QueueTrack):
                 else:
                     return Response(success=False, message="No tracks found matching the query")
             else:
-                # Direct track name
                 music_player.add_to_queue(track_name)
                 return Response(
                     success=True,
@@ -309,7 +284,6 @@ async def get_queue():
 
 @app.delete("/queue/{index}", response_model=Response)
 async def remove_from_queue(index: int):
-    """Remove song at specific index from queue"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -329,7 +303,6 @@ async def remove_from_queue(index: int):
 
 @app.delete("/library/{track_name}", response_model=Response)
 async def delete_music_file(track_name: str):
-    """Delete a music file from the library"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -346,10 +319,8 @@ async def delete_music_file(track_name: str):
     except Exception as e:
         return Response(success=False, message=f"Error deleting file: {str(e)}")
 
-# Legacy endpoints for backward compatibility
 @app.post("/control", response_model=Response)
 async def control_player(request: ControlRequest):
-    """Control the music player (legacy endpoint)"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -390,7 +361,6 @@ async def control_player(request: ControlRequest):
 
 @app.get("/tracks", response_model=Response)
 async def get_tracks():
-    """Get list of available tracks"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -402,7 +372,6 @@ async def get_tracks():
 
 @app.post("/download", response_model=Response)
 async def download_from_youtube(request: YouTubeURL):
-    """Download music from YouTube"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -421,7 +390,6 @@ async def download_from_youtube(request: YouTubeURL):
 
 @app.delete("/queue/clear", response_model=Response)
 async def clear_queue():
-    """Clear the queue"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -433,7 +401,6 @@ async def clear_queue():
 
 @app.get("/bluetooth/devices", response_model=Response)
 async def get_bluetooth_devices():
-    """Get available Bluetooth devices"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -445,7 +412,6 @@ async def get_bluetooth_devices():
 
 @app.post("/bluetooth/connect", response_model=Response)
 async def connect_bluetooth(request: BluetoothDevice):
-    """Connect to Bluetooth device"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -462,7 +428,6 @@ async def connect_bluetooth(request: BluetoothDevice):
 
 @app.post("/bluetooth/disconnect", response_model=Response)
 async def disconnect_bluetooth():
-    """Disconnect from Bluetooth device"""
     if not music_player:
         raise HTTPException(status_code=503, detail="Music player not initialized")
     
@@ -474,7 +439,4 @@ async def disconnect_bluetooth():
 
 if __name__ == "__main__":
     print("🎵 Starting Music Player API Server...")
-    print("📝 Note: This runs in headless mode - no GUI will appear")
-    print("🌐 API will be available at: http://localhost:8000")
-    print("📖 Documentation at: http://localhost:8000/docs")
     uvicorn.run(app, host="0.0.0.0", port=8000) 
